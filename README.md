@@ -281,3 +281,9 @@ python pipeline.py --data data_original --out results_lgbm --model lgbm
 ## 8. Использование ИИ
 
 Код написан с помощью ИИ-ассистента. Постановка, протокол, проверка отсутствия утечек и интерпретация результатов проверены автором. Из внешних источников упомянуты только репозиторий датасета KION, статья с описанием датасета (Petrov et al., 2022) и документация scikit-learn.
+
+## 9. Источники
+
+1. Репозиторий датасета KION (описание данных, рекомендуемая ссылка, результаты Kion Challenge по MAP@10): https://github.com/irsafilo/KION_DATASET
+2. A. Petrov, I. Safilo, D. Tikhonovich, D. Ignatov. *MTS Kion Implicit Contextualised Sequential Dataset for Movie Recommendation*. ACM RecSys CARS Workshop, 2022.
+3. Документация scikit-learn, `HistGradientBoostingClassifier`: https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingClassifier.html
