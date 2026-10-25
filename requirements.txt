@@ -2,3 +2,5 @@ numpy
 pandas
 scipy
 scikit-learn>=1.4
+# optional, only for --model lgbm:
+# lightgbm
