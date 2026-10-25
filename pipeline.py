@@ -34,13 +34,14 @@ from sklearn.metrics import roc_auc_score
 P = argparse.ArgumentParser()
 P.add_argument("--data", default="data")
 P.add_argument("--out", default="results")
-P.add_argument("--n_users", type=int, default=100_000)   # random users, full history kept
+P.add_argument("--n_users", type=int, default=200_000)   # random users, full history kept
 P.add_argument("--n_pop", type=int, default=50)          # popularity candidates per user
 P.add_argument("--n_i2i", type=int, default=50)          # co-occurrence candidates per user
 P.add_argument("--n_neg", type=int, default=20)          # sampled negatives per user for training
 P.add_argument("--max_eval_users", type=int, default=8_000)
 P.add_argument("--seed", type=int, default=42)
 P.add_argument("--perm_rows", type=int, default=40_000)   # validation rows for permutation importance
+P.add_argument("--model", choices=["hgb", "lgbm"], default="hgb")  # hgb = sklearn HistGradientBoosting
 ARGS = P.parse_args()
 
 CUTS = {"train": pd.Timestamp("2021-08-02"), "val": pd.Timestamp("2021-08-09"),
@@ -387,12 +388,25 @@ def train_rows(cand, n_neg, seed):
     return pd.concat([c[c["label"] == 1], neg]).sort_index()
 
 
+LGBM = dict(n_estimators=300, learning_rate=0.05, num_leaves=63, min_child_samples=50,
+            reg_lambda=1.0, random_state=0, deterministic=True, force_row_wise=True, verbose=-1)
+
+
 def fit(X, y):
+    if ARGS.model == "lgbm":
+        from lightgbm import LGBMClassifier       # same capacity settings as the sklearn model
+        return LGBMClassifier(**LGBM).fit(np.asarray(X, dtype=np.float32), y)
     return HistGradientBoostingClassifier(**GBDT).fit(X, y)
 
 
+def predict(model, X):
+    if ARGS.model == "lgbm":
+        return model.predict_proba(np.asarray(X, dtype=np.float32))[:, 1]
+    return model.predict_proba(X)[:, 1]
+
+
 def evaluate(model, X, cand, tgt):
-    s = model.predict_proba(X)[:, 1]
+    s = predict(model, X)
     m = rank_metrics(cand, s, tgt)
     m["auc"] = float(roc_auc_score(cand["label"], s))
     return m
@@ -478,12 +492,12 @@ with Timer("selection"):
     srng = np.random.default_rng(ARGS.seed)
     sub = np.concatenate([pos, srng.choice(neg, min(len(neg), max(ARGS.perm_rows - len(pos), 0)), replace=False)])
     Xs = Xv.iloc[sub].to_numpy(np.float32).copy(); ys = yv[sub]
-    base = roc_auc_score(ys, mdl_all.predict_proba(Xs)[:, 1])
+    base = roc_auc_score(ys, predict(mdl_all, Xs))
     imp = {}
     prng = np.random.default_rng(ARGS.seed + 1)
     for j, c in enumerate(AUTO, start=len(BASE)):      # permute generated columns only
         keep = Xs[:, j].copy(); Xs[:, j] = prng.permutation(keep)
-        imp[c] = base - roc_auc_score(ys, mdl_all.predict_proba(Xs)[:, 1])
+        imp[c] = base - roc_auc_score(ys, predict(mdl_all, Xs))
         Xs[:, j] = keep
     order = sorted(AUTO, key=lambda c: -imp[c])
 RESULTS["perm_importance_val_auc"] = {c: float(imp[c]) for c in order}
@@ -523,6 +537,10 @@ RESULTS["bootstrap_test_ndcg_vs_manual"] = boot
 for n_, b in boot.items():
     print(f"  {n_:28s} dNDCG {b['diff']:+.4f}  95% CI [{b['ci95'][0]:+.4f}, {b['ci95'][1]:+.4f}]")
 
+if ARGS.model == "lgbm":
+    import lightgbm
+    RESULTS["config"]["lgbm"] = LGBM
+    RESULTS["config"]["lightgbm_version"] = lightgbm.__version__
 RESULTS["experiments"] = EXP
 RESULTS["times_s"] = TIMES
 RESULTS["n_auto_features"] = len(AUTO)
